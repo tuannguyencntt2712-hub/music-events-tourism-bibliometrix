@@ -26,16 +26,13 @@ have_openxlsx <- requireNamespace("openxlsx", quietly = TRUE)
 SEED_STABLE <- 20250817L
 set.seed(SEED_STABLE)
 
-# --- User parameters (minimal, repo-friendly) --------------------------------
-#: Point to the cleaned CSV and define analysis window; CPY/m-index anchored at 2025.
-PROJECT_ROOT   <- "D:/OneDrive - Trường Cao đẳng Du lịch Nha Trang/Tiến sĩ/Tự học/24.8.2025/R/Simple for reviewer"
+# --- User parameters (repo-root relative) ---
+PROJECT_ROOT   <- normalizePath(getwd(), winslash = "/")
 csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 year_min       <- 2000L
 year_max       <- 2025L
 CPY_REF_YEAR   <- 2025L
 REF_YEAR_FOR_M <- CPY_REF_YEAR
-VERBOSE        <- TRUE
-vmsg <- function(...) if (isTRUE(VERBOSE)) message(paste0("[", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "] ", ...))
 
 # --- Output folders under the same base --------------------------------------
 OUTPUT_DIR <- file.path(PROJECT_ROOT, "tables")
@@ -471,3 +468,4 @@ jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES1_3_pubread
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
+
