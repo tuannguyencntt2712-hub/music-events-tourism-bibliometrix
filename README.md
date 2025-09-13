@@ -9,4 +9,5 @@ This repository publishes the **cleaned dataset** and **R/bibliometrix scripts**
 2. Input: `data_clean/scopus_clean.csv` (pre-cleaned; manual screening outside code).
 3. Run:
    ```bash
-   Rscript code/01_descriptive_tables.R
+   Rscript code/Rsimple.R
+
