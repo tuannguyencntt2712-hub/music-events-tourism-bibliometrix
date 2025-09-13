@@ -30,7 +30,7 @@ set.seed(SEED_STABLE)
 PROJECT_ROOT   <- normalizePath(getwd(), winslash = "/")
 csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 year_min       <- 2000L
-year_max       <- 2025L
+year_max       <- 2024L
 CPY_REF_YEAR   <- 2025L
 REF_YEAR_FOR_M <- CPY_REF_YEAR
 
@@ -468,4 +468,5 @@ jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES1_3_pubread
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
+
 
