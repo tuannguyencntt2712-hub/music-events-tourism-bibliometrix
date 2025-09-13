@@ -47,3 +47,12 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+# --- Project-specific ignores (keep repo tidy) ---
+data_raw/
+tables/TABLE1_citation_metrics_20*.csv
+tables/BANG3_by_year_enhanced_20*.csv
+tables/LC_unmatched_*.csv
+tables/LC_fuzzy_candidates_*.csv
+tables/*_pubready_*.xlsx
+tables/logs/
+
