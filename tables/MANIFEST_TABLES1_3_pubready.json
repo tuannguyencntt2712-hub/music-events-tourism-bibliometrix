@@ -1,0 +1,24 @@
+{
+  "generated_at": "2025-09-13 17:00:08 +07",
+  "seed": 20250817,
+  "tables": {
+    "table1_csv": "TABLE1_citation_metrics.csv",
+    "table1_numeric": "TABLE1_citation_metrics_numeric.csv",
+    "table3_csv": "TABLE3_by_year_enhanced.csv",
+    "table4_csv": "TABLE4_top40_20250913-170000.csv",
+    "lc_coverage": "LC_coverage_20250913-170000.json",
+    "TABLE4_coverage": "TABLE4_coverage_20250913-170000.json",
+    "annual_series": "annual_publications_and_citations_20250913-170000.csv"
+  },
+  "params": {
+    "year_min": 2000,
+    "year_max": 2024,
+    "CPY_REF_YEAR": 2025,
+    "REF_YEAR_FOR_M": 2025,
+    "COVERAGE_TAU": 0.55,
+    "K_TARGET": 40,
+    "ranking_rule": "TC desc → CPY desc → Year desc → DOI present → Title A–Z",
+    "ncp_def": "Number of Cited Publications (TC>0) per year",
+    "nca_def": "Number of Contributing Authors (unique) per year"
+  }
+}
