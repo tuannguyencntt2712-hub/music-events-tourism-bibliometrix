@@ -1,0 +1,11 @@
+{
+  "total_documents": 232,
+  "total_citations": 5895,
+  "coverage_tau": 0.55,
+  "K_tau": 40,
+  "coverage_at_K_tau": 0.0689,
+  "K_selected": 40,
+  "coverage_at_K_selected": 0.0689,
+  "CPY_ref_year": 2025,
+  "ranking_rule": "TC desc → CPY desc → Year desc → DOI present → Title A–Z"
+}

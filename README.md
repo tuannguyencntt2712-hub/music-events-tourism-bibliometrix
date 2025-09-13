@@ -1,2 +1,11 @@
-# music-events-tourism-bibliometrix
-This repository publishes the cleaned Scopus dataset and R/bibliometrix scripts to reproduce Tables 1, 3, and 4, plus the annual trend series for the study   “Music Events &amp; Tourism: insights from a scoping review and bibliometric performance analysis (2000–2024).” 
+# Music Events & Tourism — Replication Package (2000–2024)
+
+This repository publishes the **cleaned dataset** and **R/bibliometrix scripts** for the study
+“Music Events & Tourism: insights from a scoping review and bibliometric performance analysis (2000–2024).”
+
+## How to reproduce
+1. Requirements: R ≥ 4.3.0; packages: `bibliometrix`, `readr`, `jsonlite`, `dplyr`, `tidyr`, `stringdist`, `data.table`.
+2. Input: `data_clean/scopus_clean.csv` (pre-cleaned; manual screening applied outside code).
+3. Run:
+   ```bash
+   Rscript code/Rsimple.R
