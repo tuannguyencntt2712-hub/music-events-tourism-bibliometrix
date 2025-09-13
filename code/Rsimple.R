@@ -26,13 +26,16 @@ have_openxlsx <- requireNamespace("openxlsx", quietly = TRUE)
 SEED_STABLE <- 20250817L
 set.seed(SEED_STABLE)
 
-# --- User parameters (repo-root relative) ---
-PROJECT_ROOT   <- normalizePath(getwd(), winslash = "/")
+# --- User parameters (minimal, repo-friendly) --------------------------------
+#: Point to the cleaned CSV and define analysis window; CPY/m-index anchored at 2025.
+PROJECT_ROOT   <- "D:/OneDrive - Trường Cao đẳng Du lịch Nha Trang/Tiến sĩ/Tự học/24.8.2025/R/Simple for reviewer"
 csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 year_min       <- 2000L
 year_max       <- 2024L
 CPY_REF_YEAR   <- 2025L
 REF_YEAR_FOR_M <- CPY_REF_YEAR
+VERBOSE        <- TRUE
+vmsg <- function(...) if (isTRUE(VERBOSE)) message(paste0("[", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "] ", ...))
 
 # --- Output folders under the same base --------------------------------------
 OUTPUT_DIR <- file.path(PROJECT_ROOT, "tables")
@@ -194,7 +197,7 @@ calc_year_row <- function(y, M, ref_year = REF_YEAR_FOR_M){
 years  <- sort(unique(yrs[is.finite(yrs)]))
 TABLE3 <- do.call(rbind, lapply(years, calc_year_row, M = M, ref_year = REF_YEAR_FOR_M))
 TABLE3 <- TABLE3[order(TABLE3$Nam), c("Nam","TP","NCP","NCA","TC","C/P","C/CP","h","g","m")]
-write.csv(TABLE3, file.path(OUTPUT_DIR, "BANG3_by_year_enhanced.csv"), row.names = FALSE)
+write.csv(TABLE3, file.path(OUTPUT_DIR, "TABLE3_by_year_enhanced.csv"), row.names = FALSE)
 
 # --- Local citations (LC) & Table 4 ranking ----------------------------------
 #: Compute LC via staged matching (DOI → EID → fuzzy Title+Year±1+FirstSurname);
@@ -390,11 +393,11 @@ names(TABLE4) <- c("Rank",
                    "Authors (First author et al.)","Year","Title","Source title (Journal)",
                    "DOI","EID","Global Citations (Scopus)","Citations/Year (CPY)")
 
-out_tbl4_csv  <- file.path(OUTPUT_DIR, paste0("BANG4_top", K_TARGET, "_", TS, ".csv"))
+out_tbl4_csv  <- file.path(OUTPUT_DIR, paste0("TABLE4_top", K_TARGET, "_", TS, ".csv"))
 write.csv(TABLE4, out_tbl4_csv, row.names = FALSE, na = "")
 
 
-BANG4_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("BANG4_coverage_", TS, ".json"))
+TABLE4_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE4_coverage_", TS, ".json"))
 jsonlite::write_json(list(
   total_documents = nrow(RANKTAB),
   total_citations = unname(total_TC_all),
@@ -405,7 +408,7 @@ jsonlite::write_json(list(
   coverage_at_K_selected = unname(RANKTAB$cum_cov[K_TARGET]),
   CPY_ref_year    = unname(CPY_REF_YEAR),
   ranking_rule    = "TC desc → CPY desc → Year desc → DOI present → Title A–Z"
-), BANG4_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
+), TABLE4_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
 
 # --- README (formulas & CPY anchor explicitly set to 2025) -------------------
 readme <- c(
@@ -449,10 +452,10 @@ manifest <- list(
   tables = list(
     table1_csv = "TABLE1_citation_metrics.csv",
     table1_numeric = "TABLE1_citation_metrics_numeric.csv",
-    table3_csv = "BANG3_by_year_enhanced.csv",
+    table3_csv = "TABLE3_by_year_enhanced.csv",
     table4_csv = basename(out_tbl4_csv),
     lc_coverage = basename(LC_COVERAGE_PATH),
-    bang4_coverage = basename(BANG4_COVERAGE_PATH),
+    TABLE4_coverage = basename(TABLE4_COVERAGE_PATH),
     annual_series = paste0("annual_publications_and_citations_", TS, ".csv")
   ),
   params = list(
@@ -468,5 +471,3 @@ jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES1_3_pubread
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
-
-
