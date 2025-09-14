@@ -1,37 +1,42 @@
-cff-version: 1.2.0
-message: "If you use this replication package, please cite it as below."
-title: "Music Events & Tourism — Replication Package (2000–2024)"
-version: "<1.0.0>"
-date-released: "2025-09-13"
-url: "https://github.com/tuannguyencntt2712-hub/music-events-tourism-bibliometrix"
-repository-code: "https://github.com/tuannguyencntt2712-hub/music-events-tourism-bibliometrix"
-abstract: >
-  This repository publishes the cleaned Scopus dataset and R/bibliometrix scripts
-  to reproduce Tables 1, 3, and 4, plus the annual trend series for the study
-  “Music Events & Tourism: insights from a scoping review and bibliometric performance analysis (2000–2024).”
-  The reference year for CPY and m-index is fixed at CPY_REF_YEAR = 2025.
 
+---
+
+### `CITATION.cff`
+```yaml
+cff-version: 1.2.0
+message: "If you use this package, please cite it as below."
+title: "Music Events & Tourism — Replication Package (2000–2024)"
+version: "1.0.0"
+date-released: "2025-09-13"
+authors:
+  - family-names: Nguyen
+    given-names: Tuan
+repository-code: "https://github.com/tuannguyencntt2712-hub/music-events-tourism-bibliometrix"
+languages:
+  - R
+type: software
 keywords:
   - bibliometrix
-  - bibliometrics
   - scoping review
-  - music events
   - tourism
-  - replication
-  - CPY_REF_YEAR=2025
-
+  - music events
 license: MIT
-
-authors:
-  - family-names: "Tuan"
-    given-names: "Nguyen Thanh"
-    
 preferred-citation:
-  type: software
+  type: report
   title: "Music Events & Tourism — Replication Package (2000–2024)"
-  version: "<1.0.0>"
   authors:
-    - family-names: "Tuan"
-      given-names: "Nguyen Thanh"
-  date-released: "2025-09-13"
-  url: "https://github.com/tuannguyencntt2712-hub/music-events-tourism-bibliometrix"
+    - family-names: Nguyen
+      given-names: Tuan
+  year: 2025
+  notes: >
+    Analysis window: 2000–2024; CPY_REF_YEAR = 2025.
+    Code under MIT; data under CC BY 4.0 (see LICENSE-DATA).
+references:
+  - type: software
+    title: "R"
+    version: "4.5.1"
+    url: "https://www.r-project.org/"
+  - type: software
+    title: "bibliometrix"
+    version: "5.1.0"
+    url: "https://www.bibliometrix.org/"
