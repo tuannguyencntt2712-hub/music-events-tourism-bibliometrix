@@ -1,7 +1,7 @@
 ############################################################
 # 01_descriptive_tables.R
-#: Reproduces dataset-level (Table 1) and year-cohort metrics (Table 3),
-#: and constructs a Top-K ranking with local citations (Table 4).
+#: Reproduces dataset-level (Table 2) and year-cohort metrics (Table 4),
+#: and constructs a Top-K ranking with local citations (Table 5).
 #: The corpus is assumed pre-cleaned (manual screening already applied).
 #: CPY and the m-index are fixed at CPY_REF_YEAR = 2025 for temporal comparability.
 ############################################################
@@ -46,7 +46,6 @@ TS <- format(Sys.time(), "%Y%m%d-%H%M%S")
 if (!file.exists(csv_path)) stop(sprintf("CSV not found at: %s", csv_path))
 vmsg("Using CSV: ", normalizePath(csv_path, winslash="/"))
 
-
 # --- Unicode helpers & DOI utilities (for LC matching; no data cleaning) -----
 to_ascii <- function(x){
   x <- as.character(x); x[is.na(x)] <- ""
@@ -76,26 +75,22 @@ normalize_author_key <- function(x){
 }
 
 # --- Import (assumes pre-cleaned Scopus CSV) ----------------------------------
-#: Ingest the cleaned CSV via bibliometrix; if it fails, stop with an informative error.
 if (!file.exists(csv_path)) stop(sprintf("CSV not found: %s", csv_path))
 vmsg("Using CSV: ", normalizePath(csv_path, winslash="/"))
 M <- bibliometrix::convert2df(file = csv_path, dbsource = "scopus", format = "csv")
 
 # --- Year filter (no dedup; dataset is assumed clean) -------------------------
-#: Restrict analysis to [year_min, year_max]; rows with missing PY are dropped.
 if (!"PY" %in% names(M)) stop("Column PY not found in the input data.")
 M$PY <- suppressWarnings(as.integer(M$PY))
 M <- M[!is.na(M$PY) & M$PY >= year_min & M$PY <= year_max, , drop = FALSE]
 if (nrow(M) == 0) stop(sprintf("Empty corpus after year filter %d–%d.", year_min, year_max))
 
 # --- Standardization ----------------------------------------------------------
-#: Ensure TC is non-negative integer; ensure auxiliary fields exist.
 if (!"TC" %in% names(M)) M$TC <- 0L
 M$TC <- pmax(0L, suppressWarnings(as.integer(M$TC)))
 if (!"C1" %in% names(M)) M$C1 <- ""
 
 # --- Annual publications & citations (for trends figure) ----------------------
-#: Aggregate publications and citations per year; export a machine-readable series.
 cit_per_year <- aggregate(TC ~ PY, data = M, sum, na.rm = TRUE)
 names(cit_per_year) <- c("Year", "Total_Citations")
 pubs_per_year <- as.data.frame(table(M$PY), stringsAsFactors = FALSE)
@@ -108,9 +103,7 @@ annual$Total_Publications[is.na(annual$Total_Publications)] <- 0L
 annual$Total_Citations[is.na(annual$Total_Citations)]     <- 0L
 write.csv(annual, file.path(OUTPUT_DIR, paste0("annual_publications_and_citations_", TS, ".csv")), row.names = FALSE)
 
-# --- Table 1 (dataset-level indicators) --------------------------------------
-#: Compute timespan, totals, per-doc/per-cited ratios, h/g/m at corpus level,
-#: authorship density, and h-core total citations.
+# --- Table 2 (dataset-level indicators) --------------------------------------
 au_counts <- if ("AU" %in% names(M)) vapply(strsplit(M$AU, ";", fixed=TRUE), function(x) sum(nzchar(trimws(x))), integer(1)) else rep(NA_integer_, nrow(M))
 authors_per_doc <- round(mean(au_counts, na.rm=TRUE), 2); if (is.nan(authors_per_doc)) authors_per_doc <- NA_real_
 
@@ -142,28 +135,24 @@ hgm_all <- hgm_one_dataset()
 h_core_h <- hgm_all$h
 h_core_total_citations <- if (h_core_h > 0) sum(sort(tc_vec, decreasing = TRUE)[seq_len(h_core_h)]) else 0L
 
-# human-readable 2-column (kept stable with prior pipeline)
-labels_tbl1 <- c(
+labels_tbl2 <- c(
   "Năm xuất bản","Tổng số ấn phẩm","Năm trích dẫn (độ dài giai đoạn)","Số lượng tác giả đóng góp",
   "Số lượng bài báo được trích dẫn","Tổng số trích dẫn",
   "Trích dẫn theo bài báo","Trích dẫn theo Bài báo được trích dẫn",
   "Trích dẫn mỗi năm","Trích dẫn theo tác giả","Tác giả mỗi bài báo",
   "Tổng trích dẫn trong h-Core","chỉ số h","chỉ số g","chỉ số m"
 )
-values_tbl1 <- c(
+values_tbl2 <- c(
   sprintf("%d-%d", span_min, span_max), total_pubs, span_len, authors_unique,
   cited_docs, total_citations, cit_per_doc, cit_per_cited_doc,
   cit_per_year_overall, cit_per_author, authors_per_doc,
   h_core_total_citations, hgm_all$h, hgm_all$g, hgm_all$m
 )
-values_tbl1_chr <- vapply(values_tbl1, function(x) ifelse(length(x)==0 || is.na(x), NA_character_, as.character(x)), character(1))
-TABLE1 <- data.frame("Thong tin chinh" = labels_tbl1, "Du lieu" = values_tbl1_chr, check.names = FALSE, stringsAsFactors = FALSE)
-write.csv(TABLE1, file.path(OUTPUT_DIR, "TABLE1_citation_metrics.csv"), row.names = FALSE)
+values_tbl2_chr <- vapply(values_tbl2, function(x) ifelse(length(x)==0 || is.na(x), NA_character_, as.character(x)), character(1))
+TABLE2 <- data.frame("Thong tin chinh" = labels_tbl2, "Du lieu" = values_tbl2_chr, check.names = FALSE, stringsAsFactors = FALSE)
+write.csv(TABLE2, file.path(OUTPUT_DIR, "TABLE2_citation_metrics.csv"), row.names = FALSE)
 
-# --- Table 3 (year-level cohort metrics) -------------------------------------
-#: For each publication year y: TP, NCP (TC>0), NCA (unique authors), TC, C/P, C/CP,
-#: and h/g/m computed on the cohort’s TC distribution; m = h / age_years, with
-#: age_years = max(1, REF_YEAR_FOR_M - y + 1).
+# --- Table 4 (year-level cohort metrics) -------------------------------------
 count_authors_year <- function(sub){
   if (!"AU" %in% names(sub)) return(0L)
   au <- sub$AU; au[is.na(au)] <- ""
@@ -195,13 +184,11 @@ calc_year_row <- function(y, M, ref_year = REF_YEAR_FOR_M){
              check.names = FALSE)
 }
 years  <- sort(unique(yrs[is.finite(yrs)]))
-TABLE3 <- do.call(rbind, lapply(years, calc_year_row, M = M, ref_year = REF_YEAR_FOR_M))
-TABLE3 <- TABLE3[order(TABLE3$Nam), c("Nam","TP","NCP","NCA","TC","C/P","C/CP","h","g","m")]
-write.csv(TABLE3, file.path(OUTPUT_DIR, "TABLE3_by_year_enhanced.csv"), row.names = FALSE)
+TABLE4 <- do.call(rbind, lapply(years, calc_year_row, M = M, ref_year = REF_YEAR_FOR_M))
+TABLE4 <- TABLE4[order(TABLE4$Nam), c("Nam","TP","NCP","NCA","TC","C/P","C/CP","h","g","m")]
+write.csv(TABLE4, file.path(OUTPUT_DIR, "TABLE4_by_year_enhanced.csv"), row.names = FALSE)
 
-# --- Local citations (LC) & Table 4 ranking ----------------------------------
-#: Compute LC via staged matching (DOI → EID → fuzzy Title+Year±1+FirstSurname);
-#: then rank by TC ↓, CPY ↓, Year ↓, DOI presence; export Top-K.
+# --- Local citations (LC) & Table 5 ranking ----------------------------------
 COVERAGE_TAU   <- 0.55
 K_TARGET       <- 40L
 RANK_TIE_DOI_1 <- TRUE
@@ -324,7 +311,6 @@ if (nrow(valid_edge) == 0) {
 } else {
   LC_count <- valid_edge[, .(LC = .N), by = .(doc_id = match_doc)]
 }
-
 LC_vec <- integer(nrow(corpus))
 if (nrow(LC_count) > 0) {
   ok <- LC_count$doc_id >= 1 & LC_count$doc_id <= length(LC_vec)
@@ -352,13 +338,6 @@ M$TC <- pmax(0L, suppressWarnings(as.integer(M$TC)))
 age_years_vec <- pmax(1L, CPY_REF_YEAR - M$PY + 1L)
 CPY_vec <- round(M$TC / age_years_vec, 4)
 
-safe_chr <- function(x) { x <- ifelse(is.na(x), "", x); as.character(x) }
-get_first_author <- function(au) {
-  au <- safe_chr(au)
-  first <- trimws(strsplit(au, ";", fixed = TRUE)[[1]][1])
-  if (is.na(first) || !nzchar(first)) return("")
-  if (grepl(",", first, fixed = TRUE)) trimws(strsplit(first, ",", fixed = TRUE)[[1]][1]) else strsplit(first, " +")[[1]][1]
-}
 DI_norm <- normalize_doi(M$DI); has_doi <- is_valid_doi(DI_norm)
 TI_chr  <- if ("TI"  %in% names(M)) safe_chr(M$TI)  else ""
 SO_chr  <- if ("SO"  %in% names(M)) safe_chr(M$SO)  else ""
@@ -384,20 +363,13 @@ RANKTAB$cum_cov <- ifelse(total_TC_all > 0, RANKTAB$cum_TC / total_TC_all, 0)
 K_tau <- which(RANKTAB$cum_cov >= COVERAGE_TAU)[1]; if (is.na(K_tau)) K_tau <- min(nrow(RANKTAB), K_TARGET)
 
 TOPK <- utils::head(RANKTAB, K_TARGET)
-
-TABLE4 <- TOPK[, c("Rank",
-                   "Authors_display","PY","Title","Journal",
-                   "DOI","EID","TC","CPY")]
-
-names(TABLE4) <- c("Rank",
-                   "Authors (First author et al.)","Year","Title","Source title (Journal)",
+TABLE5 <- TOPK[, c("Rank","Authors_display","PY","Title","Journal","DOI","EID","TC","CPY")]
+names(TABLE5) <- c("Rank","Authors (First author et al.)","Year","Title","Source title (Journal)",
                    "DOI","EID","Global Citations (Scopus)","Citations/Year (CPY)")
+out_tbl5_csv  <- file.path(OUTPUT_DIR, paste0("TABLE5_top", K_TARGET, "_", TS, ".csv"))
+write.csv(TABLE5, out_tbl5_csv, row.names = FALSE, na = "")
 
-out_tbl4_csv  <- file.path(OUTPUT_DIR, paste0("TABLE4_top", K_TARGET, "_", TS, ".csv"))
-write.csv(TABLE4, out_tbl4_csv, row.names = FALSE, na = "")
-
-
-TABLE4_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE4_coverage_", TS, ".json"))
+TABLE5_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE5_coverage_", TS, ".json"))
 jsonlite::write_json(list(
   total_documents = nrow(RANKTAB),
   total_citations = unname(total_TC_all),
@@ -408,21 +380,21 @@ jsonlite::write_json(list(
   coverage_at_K_selected = unname(RANKTAB$cum_cov[K_TARGET]),
   CPY_ref_year    = unname(CPY_REF_YEAR),
   ranking_rule    = "TC desc → CPY desc → Year desc → DOI present → Title A–Z"
-), TABLE4_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
+), TABLE5_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
 
 # --- README (formulas & CPY anchor explicitly set to 2025) -------------------
 readme <- c(
   "# README_TABLES",
-  "This package reproduces Tables 1, 3, and 4 and the annual trends series from a pre-cleaned Scopus corpus.",
+  "This package reproduces Tables 2, 4, and 5 and the annual trends series from a pre-cleaned Scopus corpus.",
   "",
   "## Software & parameters",
   "- R packages: bibliometrix, readr, jsonlite, dplyr, tidyr, stringdist, data.table (optional: openxlsx).",
   paste0("- Analysis window: year_min = ", year_min, ", year_max = ", year_max, "."),
   "- **Reference year for CPY and m-index: CPY_REF_YEAR = 2025**.",
-  "- Ranking rule (Table 4): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z.",
-  "- Local citations are computed (DOI → EID → fuzzy, Jaro–Winkler ≥ 0.92) for diagnostics/coverage only and are NOT displayed in Table 4.",
+  "- Ranking rule (Table 5): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z.",
+  "- Local citations are computed (DOI → EID → fuzzy, Jaro–Winkler ≥ 0.92) for diagnostics/coverage only and are NOT displayed in Table 5.",
   "",
-  "## Table 1 – Dataset-level metrics",
+  "## Table 2 – Dataset-level metrics",
   "- Timespan = min(PY)–max(PY); length = max(PY) - min(PY) + 1.",
   "- Cited documents = count(TC > 0).",
   "- Citations per document = mean(TC).",
@@ -433,30 +405,28 @@ readme <- c(
   "- h, g computed on corpus TC; m = h / length.",
   "- h-core total citations = sum of TC among top-h documents.",
   "",
-  "## Table 3 – Year-level cohort metrics",
+  "## Table 4 – Year-level cohort metrics",
   "- For each year y: TP, NCP (TC>0), NCA (unique authors), TC, C/P = TC/TP, C/CP = TC/NCP.",
   "- m(y) = h(y) / age_years with age_years = max(1, CPY_REF_YEAR - y + 1).",
   "",
-  "## Table 4 – Top-K most cited (CPY displayed, LC suppressed)",
+  "## Table 5 – Top-K most cited (CPY displayed, LC suppressed)",
   "- Default K = 40; coverage τ is reported at K and at Kτ in JSON.",
   "",
   "All outputs are generated under `tables/`. The input file is assumed pre-cleaned and is not altered by this script."
 )
 writeLines(readme, file.path(OUTPUT_DIR, "README_TABLES.md"))
 
-
 # --- Manifest & session info --------------------------------------------------
 manifest <- list(
   generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
   seed = SEED_STABLE,
   tables = list(
-    table1_csv = "TABLE1_citation_metrics.csv",
-    table1_numeric = "TABLE1_citation_metrics_numeric.csv",
-    table3_csv = "TABLE3_by_year_enhanced.csv",
-    table4_csv = basename(out_tbl4_csv),
-    lc_coverage = basename(LC_COVERAGE_PATH),
-    TABLE4_coverage = basename(TABLE4_COVERAGE_PATH),
-    annual_series = paste0("annual_publications_and_citations_", TS, ".csv")
+    table2_csv       = "TABLE2_citation_metrics.csv",
+    table4_csv       = "TABLE4_by_year_enhanced.csv",
+    table5_csv       = basename(out_tbl5_csv),
+    lc_coverage      = basename(LC_COVERAGE_PATH),
+    table5_coverage  = basename(TABLE5_COVERAGE_PATH),
+    annual_series    = paste0("annual_publications_and_citations_", TS, ".csv")
   ),
   params = list(
     year_min = year_min, year_max = year_max,
@@ -467,7 +437,7 @@ manifest <- list(
     nca_def = "Number of Contributing Authors (unique) per year"
   )
 )
-jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES1_3_pubready.json"), pretty = TRUE, auto_unbox = TRUE)
+jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES2_4_5_pubready.json"), pretty = TRUE, auto_unbox = TRUE)
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
