@@ -7,7 +7,7 @@ This repository publishes the **cleaned dataset** and **R/bibliometrix scripts**
 > - Cleaned data (with manual screening applied) is included at `data_clean/scopus_clean.csv`.  
 > - R scripts (bibliometrix-based) are in `code/`.  
 > - Exact software versions and key parameters are listed below.  
-> - Outputs correspond to **Tables 2, 4, and 5** in the manuscript.
+> - Outputs correspond to **Tables 3, 5, and 6** in the manuscript.
 
 ---
 
