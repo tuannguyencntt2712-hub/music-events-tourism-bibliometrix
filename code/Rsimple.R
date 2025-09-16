@@ -24,7 +24,7 @@ SEED_STABLE <- 20250710L
 set.seed(SEED_STABLE)
 
 # --- User parameters (repo-friendly) -----------------------------------------
-PROJECT_ROOT   <- "D:/OneDrive - Trường Cao đẳng Du lịch Nha Trang/Tiến sĩ/Tự học/24.8.2025/R/Simple for reviewer/"
+PROJECT_ROOT   <- "D:/"
 csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 year_min       <- 2000L
 year_max       <- 2024L          # analysis window 2000–2024
@@ -297,3 +297,4 @@ jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES3_5_6.json"
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
+
