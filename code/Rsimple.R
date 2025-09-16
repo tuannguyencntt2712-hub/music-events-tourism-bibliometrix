@@ -1,9 +1,9 @@
 ############################################################
-# 01_descriptive_tables.R
-#: Reproduces dataset-level (Table 2) and year-cohort metrics (Table 4),
-#: and constructs a Top-K ranking with local citations (Table 5).
-#: The corpus is assumed pre-cleaned (manual screening already applied).
-#: CPY and the m-index are fixed at CPY_REF_YEAR = 2025 for temporal comparability.
+# Rsimple.R
+# Reproduces dataset-level (Table 3) and year-cohort metrics (Table 5),
+# and constructs a Top-K ranking (Table 6).
+# The corpus is assumed pre-cleaned (manual screening already applied).
+# CPY and the m-index are fixed at CPY_REF_YEAR = 2025 for temporal comparability.
 ############################################################
 
 # --- Packages & runtime setup -------------------------------------------------
@@ -19,34 +19,26 @@ ensure_pkg("readr")
 ensure_pkg("jsonlite")
 ensure_pkg("dplyr")
 ensure_pkg("tidyr")
-ensure_pkg("stringdist")
-ensure_pkg("data.table")
-have_openxlsx <- requireNamespace("openxlsx", quietly = TRUE)
 
-SEED_STABLE <- 20250817L
+SEED_STABLE <- 20250710L
 set.seed(SEED_STABLE)
 
-# --- User parameters (minimal, repo-friendly) --------------------------------
-#: Point to the cleaned CSV and define analysis window; CPY/m-index anchored at 2025.
-PROJECT_ROOT   <- "D:/OneDrive - Trường Cao đẳng Du lịch Nha Trang/Tiến sĩ/Tự học/24.8.2025/R/Simple for reviewer"
+# --- User parameters (repo-friendly) -----------------------------------------
+PROJECT_ROOT   <- "D:/OneDrive - Trường Cao đẳng Du lịch Nha Trang/Tiến sĩ/Tự học/24.8.2025/R/Simple for reviewer/"
 csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 year_min       <- 2000L
-year_max       <- 2024L
-CPY_REF_YEAR   <- 2025L
+year_max       <- 2024L          # analysis window 2000–2024
+CPY_REF_YEAR   <- 2025L          # CPY/m-index anchored at 2025
 REF_YEAR_FOR_M <- CPY_REF_YEAR
 VERBOSE        <- TRUE
 vmsg <- function(...) if (isTRUE(VERBOSE)) message(paste0("[", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "] ", ...))
 
-# --- Output folders under the same base --------------------------------------
+# --- Output folder ------------------------------------------------------------
 OUTPUT_DIR <- file.path(PROJECT_ROOT, "tables")
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 TS <- format(Sys.time(), "%Y%m%d-%H%M%S")
 
-# sanity check
-if (!file.exists(csv_path)) stop(sprintf("CSV not found at: %s", csv_path))
-vmsg("Using CSV: ", normalizePath(csv_path, winslash="/"))
-
-# --- Unicode helpers & DOI utilities (for LC matching; no data cleaning) -----
+# --- Helpers ------------------------------------------------------------------
 to_ascii <- function(x){
   x <- as.character(x); x[is.na(x)] <- ""
   x <- gsub("\uFF1A", ":", x, fixed = TRUE)
@@ -67,19 +59,25 @@ normalize_doi <- function(x){
          sub(".*?(10\\.[0-9]{4,9}/[-._;()/:A-Z0-9]+).*","\\1", toupper(x)), x)
 }
 is_valid_doi <- function(x) grepl("^(?i)10\\.[0-9]{4,9}/[-._;()/:A-Z0-9]+$", x)
-
 normalize_author_key <- function(x){
   x <- to_ascii(x); x <- toupper(trimws(x))
   x <- gsub("\\.+", "", x); x <- gsub("\\s+", " ", x)
   x
 }
+safe_chr <- function(x) { x <- ifelse(is.na(x), "", x); as.character(x) }
+get_first_author <- function(au) {
+  au <- safe_chr(au)
+  first <- trimws(strsplit(au, ";", fixed = TRUE)[[1]][1])
+  if (is.na(first) || !nzchar(first)) return("")
+  if (grepl(",", first, fixed = TRUE)) trimws(strsplit(first, ",", fixed = TRUE)[[1]][1]) else strsplit(first, " +")[[1]][1]
+}
 
-# --- Import (assumes pre-cleaned Scopus CSV) ----------------------------------
+# --- Import (pre-cleaned Scopus CSV) -----------------------------------------
 if (!file.exists(csv_path)) stop(sprintf("CSV not found: %s", csv_path))
 vmsg("Using CSV: ", normalizePath(csv_path, winslash="/"))
 M <- bibliometrix::convert2df(file = csv_path, dbsource = "scopus", format = "csv")
 
-# --- Year filter (no dedup; dataset is assumed clean) -------------------------
+# --- Year filter --------------------------------------------------------------
 if (!"PY" %in% names(M)) stop("Column PY not found in the input data.")
 M$PY <- suppressWarnings(as.integer(M$PY))
 M <- M[!is.na(M$PY) & M$PY >= year_min & M$PY <= year_max, , drop = FALSE]
@@ -90,7 +88,7 @@ if (!"TC" %in% names(M)) M$TC <- 0L
 M$TC <- pmax(0L, suppressWarnings(as.integer(M$TC)))
 if (!"C1" %in% names(M)) M$C1 <- ""
 
-# --- Annual publications & citations (for trends figure) ----------------------
+# --- Annual publications & citations -----------------------------------------
 cit_per_year <- aggregate(TC ~ PY, data = M, sum, na.rm = TRUE)
 names(cit_per_year) <- c("Year", "Total_Citations")
 pubs_per_year <- as.data.frame(table(M$PY), stringsAsFactors = FALSE)
@@ -103,7 +101,7 @@ annual$Total_Publications[is.na(annual$Total_Publications)] <- 0L
 annual$Total_Citations[is.na(annual$Total_Citations)]     <- 0L
 write.csv(annual, file.path(OUTPUT_DIR, paste0("annual_publications_and_citations_", TS, ".csv")), row.names = FALSE)
 
-# --- Table 2 (dataset-level indicators) --------------------------------------
+# --- Table 3 (dataset-level indicators) --------------------------------------
 au_counts <- if ("AU" %in% names(M)) vapply(strsplit(M$AU, ";", fixed=TRUE), function(x) sum(nzchar(trimws(x))), integer(1)) else rep(NA_integer_, nrow(M))
 authors_per_doc <- round(mean(au_counts, na.rm=TRUE), 2); if (is.nan(authors_per_doc)) authors_per_doc <- NA_real_
 
@@ -135,24 +133,24 @@ hgm_all <- hgm_one_dataset()
 h_core_h <- hgm_all$h
 h_core_total_citations <- if (h_core_h > 0) sum(sort(tc_vec, decreasing = TRUE)[seq_len(h_core_h)]) else 0L
 
-labels_tbl2 <- c(
+labels_tbl3 <- c(
   "Năm xuất bản","Tổng số ấn phẩm","Năm trích dẫn (độ dài giai đoạn)","Số lượng tác giả đóng góp",
   "Số lượng bài báo được trích dẫn","Tổng số trích dẫn",
   "Trích dẫn theo bài báo","Trích dẫn theo Bài báo được trích dẫn",
   "Trích dẫn mỗi năm","Trích dẫn theo tác giả","Tác giả mỗi bài báo",
   "Tổng trích dẫn trong h-Core","chỉ số h","chỉ số g","chỉ số m"
 )
-values_tbl2 <- c(
+values_tbl3 <- c(
   sprintf("%d-%d", span_min, span_max), total_pubs, span_len, authors_unique,
   cited_docs, total_citations, cit_per_doc, cit_per_cited_doc,
   cit_per_year_overall, cit_per_author, authors_per_doc,
   h_core_total_citations, hgm_all$h, hgm_all$g, hgm_all$m
 )
-values_tbl2_chr <- vapply(values_tbl2, function(x) ifelse(length(x)==0 || is.na(x), NA_character_, as.character(x)), character(1))
-TABLE2 <- data.frame("Thong tin chinh" = labels_tbl2, "Du lieu" = values_tbl2_chr, check.names = FALSE, stringsAsFactors = FALSE)
-write.csv(TABLE2, file.path(OUTPUT_DIR, "TABLE2_citation_metrics.csv"), row.names = FALSE)
+values_tbl3_chr <- vapply(values_tbl3, function(x) ifelse(length(x)==0 || is.na(x), NA_character_, as.character(x)), character(1))
+TABLE3 <- data.frame("Thong tin chinh" = labels_tbl3, "Du lieu" = values_tbl3_chr, check.names = FALSE, stringsAsFactors = FALSE)
+write.csv(TABLE3, file.path(OUTPUT_DIR, "TABLE3_citation_metrics.csv"), row.names = FALSE)
 
-# --- Table 4 (year-level cohort metrics) -------------------------------------
+# --- Table 5 (year-level cohort metrics) -------------------------------------
 count_authors_year <- function(sub){
   if (!"AU" %in% names(sub)) return(0L)
   au <- sub$AU; au[is.na(au)] <- ""
@@ -184,155 +182,15 @@ calc_year_row <- function(y, M, ref_year = REF_YEAR_FOR_M){
              check.names = FALSE)
 }
 years  <- sort(unique(yrs[is.finite(yrs)]))
-TABLE4 <- do.call(rbind, lapply(years, calc_year_row, M = M, ref_year = REF_YEAR_FOR_M))
-TABLE4 <- TABLE4[order(TABLE4$Nam), c("Nam","TP","NCP","NCA","TC","C/P","C/CP","h","g","m")]
-write.csv(TABLE4, file.path(OUTPUT_DIR, "TABLE4_by_year_enhanced.csv"), row.names = FALSE)
+TABLE5 <- do.call(rbind, lapply(years, calc_year_row, M = M, ref_year = REF_YEAR_FOR_M))
+TABLE5 <- TABLE5[order(TABLE5$Nam), c("Nam","TP","NCP","NCA","TC","C/P","C/CP","h","g","m")]
+write.csv(TABLE5, file.path(OUTPUT_DIR, "TABLE5_by_year_enhanced.csv"), row.names = FALSE)
 
-# --- Local citations (LC) & Table 5 ranking ----------------------------------
+# --- Table 6 (Top-K ranking) --------------------------------------------------
 COVERAGE_TAU   <- 0.55
 K_TARGET       <- 40L
 RANK_TIE_DOI_1 <- TRUE
 
-safe_chr <- function(x) { x <- ifelse(is.na(x), "", x); as.character(x) }
-get_first_author <- function(au) {
-  au <- safe_chr(au)
-  first <- trimws(strsplit(au, ";", fixed = TRUE)[[1]][1])
-  if (is.na(first) || !nzchar(first)) return("")
-  if (grepl(",", first, fixed = TRUE)) trimws(strsplit(first, ",", fixed = TRUE)[[1]][1]) else strsplit(first, " +")[[1]][1]
-}
-
-# keys for matching
-corpus <- M
-corpus$DOI_norm <- normalize_doi(corpus$DI)
-corpus$has_doi  <- is_valid_doi(corpus$DOI_norm)
-corpus$EID_chr  <- if ("EID" %in% names(corpus)) safe_chr(corpus$EID) else ""
-corpus$PY       <- suppressWarnings(as.integer(corpus$PY))
-corpus$Title_norm <- tolower(gsub("\\s+"," ", to_ascii(trimws(ifelse(is.na(corpus$TI),"",corpus$TI)))))
-corpus$FirstSurname <- vapply(ifelse(is.na(corpus$AU),"",corpus$AU), function(au){
-  au <- trimws(strsplit(au, ";", fixed=TRUE)[[1]][1]); if (!nzchar(au)) return("")
-  if (grepl(",", au, fixed=TRUE)) trimws(strsplit(au, ",", fixed=TRUE)[[1]][1]) else strsplit(au," +")[[1]][1]
-}, character(1))
-corpus_key <- data.frame(
-  doc_id = seq_len(nrow(corpus)),
-  DOI_norm = corpus$DOI_norm,
-  EID_chr  = corpus$EID_chr,
-  Title_norm = corpus$Title_norm,
-  PY = corpus$PY,
-  FirstSurname = toupper(corpus$FirstSurname),
-  stringsAsFactors = FALSE
-)
-doi_index <- which(is_valid_doi(corpus_key$DOI_norm)); map_doi <- setNames(doi_index, corpus_key$DOI_norm[doi_index])
-eid_index <- which(nzchar(corpus_key$EID_chr));      map_eid <- setNames(eid_index, corpus_key$EID_chr[eid_index])
-
-# long-form references
-CR_long <- data.table::data.table(src_id = seq_len(nrow(M)), CR = safe_chr(M$CR))
-CR_long <- CR_long[nchar(CR) > 0]
-CR_long <- CR_long[, .(ref = trimws(unlist(strsplit(CR, ";\\s*|\\n+|\\r+")))), by=.(src_id)]
-CR_long <- CR_long[nchar(ref) > 0]
-
-# extract fields
-safe_extract_doi <- function(s){
-  s <- to_ascii(s); if (!nzchar(s)) return("")
-  s <- gsub("^(?i)https?://(dx\\.)?doi\\.org/","", s, perl=TRUE)
-  m <- regexpr("10\\.[0-9]{4,9}/[-._;()/:A-Za-z0-9]+", s, perl=TRUE)
-  if (m[1] == -1) return(""); tolower(regmatches(s, m)[1])
-}
-norm_title_from_ref <- function(s){
-  s <- to_ascii(tolower(s))
-  s <- sub("^\\s*\\[?\\d+\\]?\\s*", "", s)
-  s <- sub("10\\.[0-9]{4,9}/[-._;()/:A-Za-z0-9]+.*$", "", s)
-  s <- sub("2-s2\\.0-\\d+.*$", "", s)
-  s <- gsub("[^a-z0-9 ]", " ", s); s <- gsub("\\s+", " ", s); trimws(s)
-}
-safe_extract_year <- function(s){
-  s <- to_ascii(s); m <- regexpr("\\b(19|20)\\d{2}\\b", s, perl=TRUE)
-  if (m[1] == -1) return(NA_integer_); suppressWarnings(as.integer(regmatches(s, m)[1]))
-}
-safe_extract_firstsurname <- function(s){
-  s2 <- toupper(to_ascii(s))
-  m <- regexpr("^\\s*([A-ZÀ-Ỵ'\\-]+)[^,]*,", s2, perl=TRUE)
-  if (m[1] != -1) return(sub(",.*$","", sub("^\\s*","", regmatches(s2, m)[1])))
-  tokens <- strsplit(s2, " +", fixed = FALSE)[[1]]; if (length(tokens)) tokens[1] else ""
-}
-
-CR_long[, DOI_ref := normalize_doi(vapply(ref, safe_extract_doi, FUN.VALUE = character(1)))]
-CR_long[, has_doi := is_valid_doi(DOI_ref)]
-CR_long[, EID_ref := { m <- regexpr("2-s2\\.0-\\d+", ref, perl=TRUE); ifelse(m == -1, "", regmatches(ref, m)) }]
-CR_long[, Title_ref := vapply(ref, norm_title_from_ref, FUN.VALUE = character(1))]
-CR_long[, Year_ref  := vapply(ref, safe_extract_year,  FUN.VALUE = integer(1))]
-CR_long[, First_ref := vapply(ref, safe_extract_firstsurname, FUN.VALUE = character(1))]
-CR_long[, match_doc := NA_integer_]
-
-# staged matching: DOI → EID → fuzzy
-idx_doi <- which(CR_long$has_doi & CR_long$DOI_ref %in% names(map_doi))
-CR_long$match_doc[idx_doi] <- unname(map_doi[ CR_long$DOI_ref[idx_doi] ])
-
-idx_eid <- which(is.na(CR_long$match_doc) & nzchar(CR_long$EID_ref) & CR_long$EID_ref %in% names(map_eid))
-CR_long$match_doc[idx_eid] <- unname(map_eid[ CR_long$EID_ref[idx_eid] ])
-
-need_fuzzy <- which(is.na(CR_long$match_doc))
-if (length(need_fuzzy)) {
-  cand <- corpus_key[, c("doc_id","Title_norm","PY","FirstSurname")]
-  tmp <- as.data.frame(CR_long[need_fuzzy, .(row_id = .I, First_ref, Year_ref, Title_ref)])
-  tmp$First_ref <- toupper(tmp$First_ref)
-  cand_map <- dplyr::left_join(tmp, cand, by = c("First_ref" = "FirstSurname"))
-  cand_map <- cand_map[!is.na(cand_map$doc_id) & !is.na(cand_map$PY), ]
-  cand_map$year_ok <- is.na(tmp$Year_ref[cand_map$row_id]) | abs(cand_map$PY - tmp$Year_ref[cand_map$row_id]) <= 1
-  cand_map <- cand_map[cand_map$year_ok, ]
-  if (nrow(cand_map)) {
-    sim <- stringdist::stringsim(cand_map$Title_norm, tmp$Title_ref[cand_map$row_id], method = "jw", p = 0.1)
-    cand_map$sim <- sim; thr <- 0.92
-    best <- cand_map %>% dplyr::group_by(row_id) %>% dplyr::filter(sim == max(sim, na.rm = TRUE)) %>%
-      dplyr::slice_head(n = 1) %>% dplyr::ungroup()
-    accept <- best$sim >= thr
-    rows_accept <- need_fuzzy[ best$row_id[accept] ]
-    docs_accept <- best$doc_id[accept]
-    CR_long$match_doc[rows_accept] <- docs_accept
-    near <- best %>% dplyr::filter(sim >= 0.85 & sim < thr)
-    if (nrow(near)) {
-      audit_near <- data.frame(
-        src_id = CR_long$src_id[ need_fuzzy[near$row_id] ],
-        ref    = CR_long$ref[    need_fuzzy[near$row_id] ],
-        First_ref = near$First_ref, Year_ref = near$Year_ref,
-        Title_ref = tmp$Title_ref[near$row_id],
-        cand_doc_id = near$doc_id, cand_PY = near$PY,
-        cand_Title  = corpus_key$Title_norm[near$doc_id],
-        sim = round(near$sim, 4), stringsAsFactors = FALSE
-      )
-      write.csv(audit_near, file.path(OUTPUT_DIR, paste0("LC_fuzzy_candidates_", TS, ".csv")), row.names = FALSE)
-    }
-  }
-}
-
-# LC counts and coverage report
-valid_edge <- CR_long[!is.na(match_doc) & CR_long$src_id != match_doc]
-if (nrow(valid_edge) == 0) {
-  LC_count <- data.frame(doc_id = integer(0), LC = integer(0))
-} else {
-  LC_count <- valid_edge[, .(LC = .N), by = .(doc_id = match_doc)]
-}
-LC_vec <- integer(nrow(corpus))
-if (nrow(LC_count) > 0) {
-  ok <- LC_count$doc_id >= 1 & LC_count$doc_id <= length(LC_vec)
-  if (any(ok)) LC_vec[LC_count$doc_id[ok]] <- LC_count$LC[ok]
-}
-
-tot_refs <- nrow(CR_long)
-matched_doi <- sum(!is.na(CR_long$match_doc) & CR_long$has_doi)
-matched_eid <- sum(!is.na(CR_long$match_doc) & !CR_long$has_doi & nzchar(CR_long$EID_ref))
-matched_fuz <- sum(!is.na(CR_long$match_doc) & !CR_long$has_doi & !nzchar(CR_long$EID_ref))
-unmatched <- CR_long[is.na(match_doc)]
-LC_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("LC_coverage_", TS, ".json"))
-jsonlite::write_json(list(
-  total_references_rows = tot_refs,
-  matched_via = list(doi = matched_doi, eid = matched_eid, fuzzy = matched_fuz),
-  unmatched_rows = nrow(unmatched),
-  match_rate = round((tot_refs - nrow(unmatched)) / max(1, tot_refs), 4),
-  fuzzy_threshold = 0.92,
-  notes = "LC via DOI→EID→Fuzzy (Title+Year±1+FirstAuthor)."
-), LC_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
-
-# Ranking & CPY (anchored at 2025)
 M$PY <- suppressWarnings(as.integer(M$PY))
 M$TC <- pmax(0L, suppressWarnings(as.integer(M$TC)))
 age_years_vec <- pmax(1L, CPY_REF_YEAR - M$PY + 1L)
@@ -349,7 +207,7 @@ authors_display <- ifelse(nzchar(first_authors), paste0(first_authors, " et al."
 RANKTAB <- data.frame(
   Authors_display = authors_display, PY = M$PY, Title = TI_chr, Journal = SO_chr,
   DOI = ifelse(has_doi, DI_norm, ""), EID = EID_chr, TC = M$TC, CPY = CPY_vec,
-  LC = LC_vec, has_doi = has_doi,
+  has_doi = has_doi,
   stringsAsFactors = FALSE, check.names = FALSE
 )
 ord <- order(-RANKTAB$TC, -RANKTAB$CPY, -RANKTAB$PY,
@@ -363,13 +221,13 @@ RANKTAB$cum_cov <- ifelse(total_TC_all > 0, RANKTAB$cum_TC / total_TC_all, 0)
 K_tau <- which(RANKTAB$cum_cov >= COVERAGE_TAU)[1]; if (is.na(K_tau)) K_tau <- min(nrow(RANKTAB), K_TARGET)
 
 TOPK <- utils::head(RANKTAB, K_TARGET)
-TABLE5 <- TOPK[, c("Rank","Authors_display","PY","Title","Journal","DOI","EID","TC","CPY")]
-names(TABLE5) <- c("Rank","Authors (First author et al.)","Year","Title","Source title (Journal)",
+TABLE6 <- TOPK[, c("Rank","Authors_display","PY","Title","Journal","DOI","EID","TC","CPY")]
+names(TABLE6) <- c("Rank","Authors (First author et al.)","Year","Title","Source title (Journal)",
                    "DOI","EID","Global Citations (Scopus)","Citations/Year (CPY)")
-out_tbl5_csv  <- file.path(OUTPUT_DIR, paste0("TABLE5_top", K_TARGET, "_", TS, ".csv"))
-write.csv(TABLE5, out_tbl5_csv, row.names = FALSE, na = "")
+out_tbl6_csv  <- file.path(OUTPUT_DIR, paste0("TABLE6_top", K_TARGET, "_", TS, ".csv"))
+write.csv(TABLE6, out_tbl6_csv, row.names = FALSE, na = "")
 
-TABLE5_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE5_coverage_", TS, ".json"))
+TABLE6_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE6_coverage_", TS, ".json"))
 jsonlite::write_json(list(
   total_documents = nrow(RANKTAB),
   total_citations = unname(total_TC_all),
@@ -380,21 +238,20 @@ jsonlite::write_json(list(
   coverage_at_K_selected = unname(RANKTAB$cum_cov[K_TARGET]),
   CPY_ref_year    = unname(CPY_REF_YEAR),
   ranking_rule    = "TC desc → CPY desc → Year desc → DOI present → Title A–Z"
-), TABLE5_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
+), TABLE6_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
 
-# --- README (formulas & CPY anchor explicitly set to 2025) -------------------
+# --- README (formulas & CPY anchor = 2025) -----------------------------------
 readme <- c(
   "# README_TABLES",
-  "This package reproduces Tables 2, 4, and 5 and the annual trends series from a pre-cleaned Scopus corpus.",
+  "This package reproduces Tables 3, 5, and 6 and the annual trends series from a pre-cleaned Scopus corpus.",
   "",
   "## Software & parameters",
-  "- R packages: bibliometrix, readr, jsonlite, dplyr, tidyr, stringdist, data.table (optional: openxlsx).",
+  "- R packages: bibliometrix, readr, jsonlite, dplyr, tidyr.",
   paste0("- Analysis window: year_min = ", year_min, ", year_max = ", year_max, "."),
   "- **Reference year for CPY and m-index: CPY_REF_YEAR = 2025**.",
-  "- Ranking rule (Table 5): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z.",
-  "- Local citations are computed (DOI → EID → fuzzy, Jaro–Winkler ≥ 0.92) for diagnostics/coverage only and are NOT displayed in Table 5.",
+  "- Ranking rule (Table 6): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z.",
   "",
-  "## Table 2 – Dataset-level metrics",
+  "## Table 3 – Dataset-level metrics",
   "- Timespan = min(PY)–max(PY); length = max(PY) - min(PY) + 1.",
   "- Cited documents = count(TC > 0).",
   "- Citations per document = mean(TC).",
@@ -402,17 +259,17 @@ readme <- c(
   "- Citations per year = sum(TC) / length.",
   "- Citations per author = sum(TC) / unique contributing authors.",
   "- Authors per document = mean(authors in AU).",
-  "- h, g computed on corpus TC; m = h / length.",
+  "- h, g on corpus TC; m = h / length.",
   "- h-core total citations = sum of TC among top-h documents.",
   "",
-  "## Table 4 – Year-level cohort metrics",
+  "## Table 5 – Year-level cohort metrics",
   "- For each year y: TP, NCP (TC>0), NCA (unique authors), TC, C/P = TC/TP, C/CP = TC/NCP.",
   "- m(y) = h(y) / age_years with age_years = max(1, CPY_REF_YEAR - y + 1).",
   "",
-  "## Table 5 – Top-K most cited (CPY displayed, LC suppressed)",
-  "- Default K = 40; coverage τ is reported at K and at Kτ in JSON.",
+  "## Table 6 – Top-K most cited (CPY displayed)",
+  "- Default K = 40; coverage τ is reported at K and Kτ in JSON.",
   "",
-  "All outputs are generated under `tables/`. The input file is assumed pre-cleaned and is not altered by this script."
+  "All outputs are generated under `tables/`. The input CSV is assumed pre-cleaned and is not altered by this script."
 )
 writeLines(readme, file.path(OUTPUT_DIR, "README_TABLES.md"))
 
@@ -421,12 +278,11 @@ manifest <- list(
   generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
   seed = SEED_STABLE,
   tables = list(
-    table2_csv       = "TABLE2_citation_metrics.csv",
-    table4_csv       = "TABLE4_by_year_enhanced.csv",
-    table5_csv       = basename(out_tbl5_csv),
-    lc_coverage      = basename(LC_COVERAGE_PATH),
-    table5_coverage  = basename(TABLE5_COVERAGE_PATH),
-    annual_series    = paste0("annual_publications_and_citations_", TS, ".csv")
+    table3_csv = "TABLE3_citation_metrics.csv",
+    table5_csv = "TABLE5_by_year_enhanced.csv",
+    table6_csv = basename(out_tbl6_csv),
+    table6_coverage = basename(TABLE6_COVERAGE_PATH),
+    annual_series = paste0("annual_publications_and_citations_", TS, ".csv")
   ),
   params = list(
     year_min = year_min, year_max = year_max,
@@ -437,7 +293,7 @@ manifest <- list(
     nca_def = "Number of Contributing Authors (unique) per year"
   )
 )
-jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES2_4_5_pubready.json"), pretty = TRUE, auto_unbox = TRUE)
+jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES3_5_6.json"), pretty = TRUE, auto_unbox = TRUE)
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
