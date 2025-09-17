@@ -25,4 +25,3 @@ This repository publishes the **cleaned dataset** and **R/bibliometrix scripts**
 From the repository root:
 ```bash
 Rscript code/Rsimple.R
-
