@@ -1,0 +1,6 @@
+TITLE-ABS-KEY ( music AND ( event* OR festival* OR concert* ) AND touris* )
+AND ( PUBYEAR > 1999 AND PUBYEAR < 2025 )
+AND ( LIMIT-TO ( SRCTYPE , "j" ) )
+AND ( LIMIT-TO ( PUBSTAGE , "final" ) )
+AND ( LIMIT-TO ( DOCTYPE , "ar" ) )
+AND ( LIMIT-TO ( LANGUAGE , "English" ) )

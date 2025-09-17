@@ -1,0 +1,18 @@
+{
+  "search_date": "2025-07-10",
+  "freeze_date_citations": "2025-07-10",
+  "cpy_reference_year": 2025,
+  "software": {
+    "R": "4.5.1",
+    "RStudio": "2025.05.1-513",
+    "bibliometrix": "5.1.0"
+  },
+  "os_tested": [
+    "Windows 11"
+  ],
+  "inputs": {
+    "clean_dataset": "data_clean/scopus_clean.csv",
+    "sha256_scopus_clean": "<fill_after_upload>"
+  },
+  "notes": "All citation-based indicators computed at the uniform freeze date; CPY uses 2025 as the reference year."
+}

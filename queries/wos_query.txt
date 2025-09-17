@@ -1,0 +1,6 @@
+( TI=(music AND (event* OR festival* OR concert*) AND touris*) 
+  OR AB=(music AND (event* OR festival* OR concert*) AND touris*) 
+  OR AK=(music AND (event* OR festival* OR concert*) AND touris*) ) 
+AND FPY=(2000–2024) 
+AND LA=(English) 
+AND DT=(Article)
