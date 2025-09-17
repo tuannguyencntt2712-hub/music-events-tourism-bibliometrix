@@ -1,9 +1,10 @@
 ############################################################
-# Rsimple.R
+# Rsimple.R — repository-first, single-file
 # Reproduces dataset-level (Table 3) and year-cohort metrics (Table 5),
 # and constructs a Top-K ranking (Table 6).
-# The corpus is assumed pre-cleaned (manual screening already applied).
-# CPY and the m-index are fixed at CPY_REF_YEAR = 2025 for temporal comparability.
+# Corpus is pre-cleaned (manual screening applied).
+# CPY and m-index are anchored at CPY_REF_YEAR = 2025 for comparability.
+# Freeze date (citation snapshot) is documented for transparency.
 ############################################################
 
 # --- Packages & runtime setup -------------------------------------------------
@@ -19,21 +20,27 @@ ensure_pkg("readr")
 ensure_pkg("jsonlite")
 ensure_pkg("dplyr")
 ensure_pkg("tidyr")
+ensure_pkg("digest")   # NEW: for SHA256 checksum (optional but helpful)
 
 SEED_STABLE <- 20250710L
 set.seed(SEED_STABLE)
 
-# --- User parameters (repo-friendly) -----------------------------------------
-PROJECT_ROOT   <- "D:/"
-csv_path       <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
-year_min       <- 2000L
-year_max       <- 2024L          # analysis window 2000–2024
-CPY_REF_YEAR   <- 2025L          # CPY/m-index anchored at 2025
+# --- Repro settings (put at top for clarity) ---------------------------------
+FREEZE_DATE    <- as.Date("2025-07-10")   # search/export & citation freeze date
+CPY_REF_YEAR   <- 2025L                   # CPY/m-index anchor
 REF_YEAR_FOR_M <- CPY_REF_YEAR
+year_min       <- 2000L
+year_max       <- 2024L
 VERBOSE        <- TRUE
 vmsg <- function(...) if (isTRUE(VERBOSE)) message(paste0("[", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "] ", ...))
 
-# --- Output folder ------------------------------------------------------------
+# --- Project root & paths (repo-friendly; no absolute Windows path) ----------
+# Use env var PROJECT_ROOT if set; otherwise use current working dir.
+.pr <- Sys.getenv("PROJECT_ROOT", unset = "")
+if (!nzchar(.pr)) .pr <- getwd()
+PROJECT_ROOT <- normalizePath(.pr, winslash = "/", mustWork = FALSE)
+
+csv_path  <- file.path(PROJECT_ROOT, "data_clean", "scopus_clean.csv")
 OUTPUT_DIR <- file.path(PROJECT_ROOT, "tables")
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 TS <- format(Sys.time(), "%Y%m%d-%H%M%S")
@@ -59,11 +66,6 @@ normalize_doi <- function(x){
          sub(".*?(10\\.[0-9]{4,9}/[-._;()/:A-Z0-9]+).*","\\1", toupper(x)), x)
 }
 is_valid_doi <- function(x) grepl("^(?i)10\\.[0-9]{4,9}/[-._;()/:A-Z0-9]+$", x)
-normalize_author_key <- function(x){
-  x <- to_ascii(x); x <- toupper(trimws(x))
-  x <- gsub("\\.+", "", x); x <- gsub("\\s+", " ", x)
-  x
-}
 safe_chr <- function(x) { x <- ifelse(is.na(x), "", x); as.character(x) }
 get_first_author <- function(au) {
   au <- safe_chr(au)
@@ -72,9 +74,33 @@ get_first_author <- function(au) {
   if (grepl(",", first, fixed = TRUE)) trimws(strsplit(first, ",", fixed = TRUE)[[1]][1]) else strsplit(first, " +")[[1]][1]
 }
 
-# --- Import (pre-cleaned Scopus CSV) -----------------------------------------
+# --- Import (pre-cleaned Scopus CSV) + minimal sanity checks ------------------
 if (!file.exists(csv_path)) stop(sprintf("CSV not found: %s", csv_path))
 vmsg("Using CSV: ", normalizePath(csv_path, winslash="/"))
+
+# Read raw CSV for sanity checks (keeps your main flow unchanged)
+df0 <- tryCatch(readr::read_csv(csv_path, show_col_types = FALSE), error = function(e) NULL)
+if (is.null(df0)) stop("Cannot read: ", csv_path)
+
+# Basic invariants (adjust 232 if your corpus changes in future)
+stopifnot(nrow(df0) == 232)
+if (!"PY" %in% names(df0)) stop("Column PY not found in the CSV.")
+stopifnot(min(df0$PY, na.rm=TRUE) == year_min, max(df0$PY, na.rm=TRUE) == year_max)
+
+# No duplicate DOI/EID (if columns exist)
+if ("DI" %in% names(df0)) {
+  di_norm <- normalize_doi(df0$DI); dup_doi <- any(duplicated(di_norm) & nzchar(di_norm))
+  stopifnot(!dup_doi)
+}
+if ("EID" %in% names(df0)) {
+  dup_eid <- any(duplicated(df0$EID) & !is.na(df0$EID))
+  stopifnot(!dup_eid)
+}
+
+# Optional: print SHA256 so you can paste to README if needed
+vmsg("SHA256(scopus_clean.csv) = ", digest::digest(file = csv_path, algo = "sha256"))
+
+# Main bibliometrix import
 M <- bibliometrix::convert2df(file = csv_path, dbsource = "scopus", format = "csv")
 
 # --- Year filter --------------------------------------------------------------
@@ -112,7 +138,7 @@ total_pubs <- nrow(M)
 
 au_all <- if ("AU" %in% names(M)) M$AU else ""; au_all[is.na(au_all)] <- ""
 toks_all <- unlist(strsplit(paste(au_all, collapse=";"), ";", fixed=TRUE))
-authors_unique <- if (length(toks_all) == 0) 0L else length(unique(normalize_author_key(toks_all[nzchar(toks_all)])))
+authors_unique <- if (length(toks_all) == 0) 0L else length(unique(gsub("\\s+", " ", toupper(gsub("\\.+","", to_ascii(toks_all[nzchar(toks_all)]))))))
 
 tc_vec <- pmax(0L, suppressWarnings(as.integer(if ("TC" %in% names(M)) M$TC else 0L)))
 total_citations <- sum(tc_vec, na.rm=TRUE)
@@ -156,7 +182,8 @@ count_authors_year <- function(sub){
   au <- sub$AU; au[is.na(au)] <- ""
   toks <- unlist(strsplit(paste(au, collapse = ";"), ";", fixed = TRUE))
   if (length(toks) == 0) return(0L)
-  toks <- normalize_author_key(toks); toks <- toks[nzchar(toks)]
+  toks <- gsub("\\s+", " ", toupper(gsub("\\.+","", to_ascii(toks))))
+  toks <- toks[nzchar(toks)]
   as.integer(length(unique(toks)))
 }
 hgm_one <- function(tc_vec){
@@ -227,49 +254,17 @@ names(TABLE6) <- c("Rank","Authors (First author et al.)","Year","Title","Source
 out_tbl6_csv  <- file.path(OUTPUT_DIR, paste0("TABLE6_top", K_TARGET, "_", TS, ".csv"))
 write.csv(TABLE6, out_tbl6_csv, row.names = FALSE, na = "")
 
-TABLE6_COVERAGE_PATH <- file.path(OUTPUT_DIR, paste0("TABLE6_coverage_", TS, ".json"))
-jsonlite::write_json(list(
-  total_documents = nrow(RANKTAB),
-  total_citations = unname(total_TC_all),
-  coverage_tau    = COVERAGE_TAU,
-  K_tau           = unname(K_tau),
-  coverage_at_K_tau = if (is.finite(K_tau)) unname(RANKTAB$cum_cov[K_tau]) else NA_real_,
-  K_selected      = K_TARGET,
-  coverage_at_K_selected = unname(RANKTAB$cum_cov[K_TARGET]),
-  CPY_ref_year    = unname(CPY_REF_YEAR),
-  ranking_rule    = "TC desc → CPY desc → Year desc → DOI present → Title A–Z"
-), TABLE6_COVERAGE_PATH, pretty = TRUE, auto_unbox = TRUE)
 
 # --- README (formulas & CPY anchor = 2025) -----------------------------------
 readme <- c(
   "# README_TABLES",
-  "This package reproduces Tables 3, 5, and 6 and the annual trends series from a pre-cleaned Scopus corpus.",
+  "This package reproduces Tables 3, 5, and 6 and the annual trends from a pre-cleaned Scopus corpus.",
   "",
   "## Software & parameters",
   "- R packages: bibliometrix, readr, jsonlite, dplyr, tidyr.",
-  paste0("- Analysis window: year_min = ", year_min, ", year_max = ", year_max, "."),
-  "- **Reference year for CPY and m-index: CPY_REF_YEAR = 2025**.",
-  "- Ranking rule (Table 6): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z.",
-  "",
-  "## Table 3 – Dataset-level metrics",
-  "- Timespan = min(PY)–max(PY); length = max(PY) - min(PY) + 1.",
-  "- Cited documents = count(TC > 0).",
-  "- Citations per document = mean(TC).",
-  "- Citations per cited document = sum(TC) / count(TC > 0).",
-  "- Citations per year = sum(TC) / length.",
-  "- Citations per author = sum(TC) / unique contributing authors.",
-  "- Authors per document = mean(authors in AU).",
-  "- h, g on corpus TC; m = h / length.",
-  "- h-core total citations = sum of TC among top-h documents.",
-  "",
-  "## Table 5 – Year-level cohort metrics",
-  "- For each year y: TP, NCP (TC>0), NCA (unique authors), TC, C/P = TC/TP, C/CP = TC/NCP.",
-  "- m(y) = h(y) / age_years with age_years = max(1, CPY_REF_YEAR - y + 1).",
-  "",
-  "## Table 6 – Top-K most cited (CPY displayed)",
-  "- Default K = 40; coverage τ is reported at K and Kτ in JSON.",
-  "",
-  "All outputs are generated under `tables/`. The input CSV is assumed pre-cleaned and is not altered by this script."
+  paste0("- Analysis window: ", year_min, "–", year_max, "."),
+  "- **Freeze date for citations: 2025-07-10**; **CPY reference year = 2025**.",
+  "- Ranking rule (Table 6): TC ↓ → CPY ↓ → Year ↓ → DOI present → Title A–Z."
 )
 writeLines(readme, file.path(OUTPUT_DIR, "README_TABLES.md"))
 
@@ -281,20 +276,16 @@ manifest <- list(
     table3_csv = "TABLE3_citation_metrics.csv",
     table5_csv = "TABLE5_by_year_enhanced.csv",
     table6_csv = basename(out_tbl6_csv),
-    table6_coverage = basename(TABLE6_COVERAGE_PATH),
     annual_series = paste0("annual_publications_and_citations_", TS, ".csv")
   ),
   params = list(
     year_min = year_min, year_max = year_max,
+    FREEZE_DATE = as.character(FREEZE_DATE),
     CPY_REF_YEAR = CPY_REF_YEAR, REF_YEAR_FOR_M = REF_YEAR_FOR_M,
-    COVERAGE_TAU = COVERAGE_TAU, K_TARGET = K_TARGET,
-    ranking_rule = "TC desc → CPY desc → Year desc → DOI present → Title A–Z",
-    ncp_def = "Number of Cited Publications (TC>0) per year",
-    nca_def = "Number of Contributing Authors (unique) per year"
+    COVERAGE_TAU = COVERAGE_TAU, K_TARGET = K_TARGET
   )
 )
 jsonlite::write_json(manifest, file.path(OUTPUT_DIR, "MANIFEST_TABLES3_5_6.json"), pretty = TRUE, auto_unbox = TRUE)
 
 writeLines(capture.output(sessionInfo()), file.path(OUTPUT_DIR, paste0("session_info_", TS, ".txt")))
 vmsg("Done. Outputs in: ", normalizePath(OUTPUT_DIR, winslash="/"))
-
